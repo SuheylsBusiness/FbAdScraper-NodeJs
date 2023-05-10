@@ -18,16 +18,16 @@ function formatStringProperly(inputStr) {
 }
 
 async function executeScrape(url, sheetsService, spreadsheetId, page) {
-    const options = {
-        timeZone: 'Europe/Berlin',
-        weekday: 'short',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
-      };
+  const options = {
+    timeZone: "Europe/Berlin",
+    weekday: "short",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  };
   try {
     // Initialize variables
     let newAdsCount = 0,
@@ -118,7 +118,13 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     } catch (err) {}
 
     for (const record of records) {
-      const tempRecord = { BrandName: companyName, AdStatus: "Active", FirstSeenTimestamp: new Date().toLocaleString('de-DE', options), LastUpdateTimestamp: new Date().toLocaleString('de-DE', options), HasBeenTouched: "True" };
+      const tempRecord = {
+        BrandName: companyName,
+        AdStatus: "Active",
+        FirstSeenTimestamp: new Date().toLocaleString("de-DE", options),
+        LastUpdateTimestamp: new Date().toLocaleString("de-DE", options),
+        HasBeenTouched: "True",
+      };
 
       try {
         const spanElements = await record.$$("span");
@@ -198,7 +204,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
         if (allRecords[i].CreativeId == tempRecord.CreativeId) {
           if (allRecords[i].DisappearedSince && allRecords[i].DisappearedSince.length > 0) {
             howManyAdsAppearedAgain++;
-            allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString('de-DE', options);
+            allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("de-DE", options);
             allRecords[i].DisappearedSince = "";
           }
           tempRecord.FirstSeenTimestamp = allRecords[i].FirstSeenTimestamp;
@@ -219,7 +225,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
 
     for (let i = 0; i < allRecords.length; i++) {
       if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName) {
-        allRecords[i].DisappearedSince = new Date().toLocaleString('de-DE', options);
+        allRecords[i].DisappearedSince = new Date().toLocaleString("de-DE", options);
         adsDisappearCount++;
       }
     }
@@ -244,10 +250,10 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
           `${allRecords[i].HasAppearedAfterDisappearingDate || ""}`
       );
     }
-    dataToPost[0] = dataToPost[0].replace('\r\n', '');
+    dataToPost[0] = dataToPost[0].replace("\r\n", "");
     await appendIntoTopSpreadsheet(dataToPost, sheetsService, spreadsheetId, 2009049317);
     const dailyRecord = {
-      Timestamp: new Date().toLocaleString('de-DE', options),
+      Timestamp: new Date().toLocaleString("de-DE", options),
       Brand: companyName,
       TotalActiveAds: totalAdCount.toString(),
       HowManyNewAds: newAdsCount.toString(),
@@ -280,8 +286,8 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
   var gsheetService = await initializeGoogleSheet();
   const browser = await puppeteer.launch({
     headless: false,
-    args: ['--lang=en-US'],
-    defaultViewport: { width: 1920, height: 1080 }
+    args: ["--lang=en-US"],
+    defaultViewport: { width: 1920, height: 1080 },
   });
 
   const page = await browser.newPage();
@@ -291,6 +297,10 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     for (const url of urlsToMonitor) {
       await executeScrape(url, gsheetService, sheetId, page);
     }
-    await sleep(5000);
+    // Wait for 24 hours
+    await sleep(86400000);
+
+    // Code below this line will be executed after 24 hours
+    console.log("24 hours have passed!");
   }
 })();
