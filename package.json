@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "axios": "^1.4.0",
     "google-auth-library": "^8.8.0",
     "googleapis": "^118.0.0",
     "js-htmlencode": "^0.3.0",

@@ -1,6 +1,11 @@
 const { initializeGoogleSheet, readSpreadsheetEntries, clearSheet, appendIntoTopSpreadsheet, appendIntoSpreadsheet } = require("./googleSheetApi");
 const { htmlDecode } = require("js-htmlencode");
 const puppeteer = require("puppeteer");
+const fs = require("fs");
+const path = require("path");
+const axios = require("axios");
+const { google } = require("googleapis");
+const os = require("os");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,7 +22,46 @@ function formatStringProperly(inputStr) {
   return htmlDecode(inputStr.toString()).trim();
 }
 
+async function downloadMedia(url, savePath) {
+  try {
+    const response = await axios.get(url, { responseType: "stream" });
+    const writer = fs.createWriteStream(savePath);
+    response.data.pipe(writer);
+
+    return new Promise((resolve, reject) => {
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
+  } catch (error) {
+    console.error("Error occurred while downloading the media:", error);
+    throw error;
+  }
+}
+
+// Upload media files to Google Drive
+async function uploadMediaFiles(mediaFolderId, imageFilenames, videoFilenames) {
+  const driveClient = await initializeService();
+
+  // Upload images
+  for (const imageFilename of imageFilenames) {
+    const imagePath = path.join(path.join(__dirname, "Media"), imageFilename);
+    await uploadFileToDrive(driveClient, imagePath, mediaFolderId);
+  }
+
+  // Upload videos
+  for (const videoFilename of videoFilenames) {
+    const videoPath = path.join(path.join(__dirname, "Media"), videoFilename);
+    await uploadFileToDrive(driveClient, videoPath, mediaFolderId);
+  }
+}
+
 async function executeScrape(url, sheetsService, spreadsheetId, page) {
+  // Create a Media folder if it doesn't exist
+  const mediaFolderPath = path.join(__dirname, "Media");
+  if (!fs.existsSync(mediaFolderPath)) {
+    fs.mkdirSync(mediaFolderPath);
+  }
+
   const options = {
     timeZone: "Europe/Berlin",
     weekday: "short",
@@ -38,7 +82,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     let allRecords = [];
 
     try {
-      const range = "All Records!A2:M90000";
+      const range = "All Records!A2:O90000";
       const entries = await readSpreadsheetEntries(range, sheetsService, spreadsheetId);
       allRecords = entries.map((columns) => {
         const record = {};
@@ -50,13 +94,15 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
           if (columns.length > 3) record.AdHeader = formatStringProperly(columns[3]);
           if (columns.length > 4) record.AdCreative = formatStringProperly(columns[4]);
           if (columns.length > 5) record.CreativeAndBodyUse = formatStringProperly(columns[5]);
-          if (columns.length > 6) record.VersionInfo = formatStringProperly(columns[6]);
-          if (columns.length > 7) record.FirstSeenTimestamp = formatStringProperly(columns[7]);
-          if (columns.length > 8) record.LastUpdateTimestamp = formatStringProperly(columns[8]);
-          if (columns.length > 9) record.StartedRunning = formatStringProperly(columns[9]);
-          if (columns.length > 10) record.TotalRuntimeOfAd = formatStringProperly(columns[10]);
-          if (columns.length > 11) record.DisappearedSince = formatStringProperly(columns[11]);
-          if (columns.length > 12) record.HasAppearedAfterDisappearingDate = formatStringProperly(columns[12]);
+          if (columns.length > 6) record.Url = formatStringProperly(columns[6]);
+          if (columns.length > 7) record.VersionInfo = formatStringProperly(columns[7]);
+          if (columns.length > 8) record.FirstSeenTimestamp = formatStringProperly(columns[8]);
+          if (columns.length > 9) record.LastUpdateTimestamp = formatStringProperly(columns[9]);
+          if (columns.length > 10) record.StartedRunning = formatStringProperly(columns[10]);
+          if (columns.length > 11) record.TotalRuntimeOfAd = formatStringProperly(columns[11]);
+          if (columns.length > 12) record.DisappearedSince = formatStringProperly(columns[12]);
+          if (columns.length > 13) record.HasAppearedAfterDisappearingDate = formatStringProperly(columns[13]);
+          if (columns.length > 14) record.HistoryOfDisappearances = formatStringProperly(columns[14]);
 
           record.HasBeenTouched = "False";
         } catch (error) {
@@ -108,7 +154,13 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     } catch (err) {}
 
     // Get main attrs
-    const companyName = await page.$eval('a[href] > div[role="heading"]', (el) => el.textContent.trim());
+    let companyName = "";
+    try {
+      companyName = await page.$eval('a[href] > div[role="heading"]', (el) => el.textContent.trim());
+    } catch (error) {
+      console.error(`Error occurred when getting company name: ${error.message}`);
+      return;
+    }
 
     // Loop through every record and perform logical operations
     const records = await page.$x("//hr/../../../div[not(contains(@class, ' '))]");
@@ -125,6 +177,39 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
         LastUpdateTimestamp: new Date().toLocaleString("de-DE", options),
         HasBeenTouched: "True",
       };
+
+      // Get images
+      const images = await record.$$eval("img[referrerpolicy]", (elements) => elements.map((element) => element.getAttribute("src")));
+
+      // Get videos
+      const videos = await record.$$eval("video[src]", (elements) => elements.map((element) => element.getAttribute("src")));
+
+      // Download and save images
+      const imageFilenames = [];
+      for (const image of images) {
+        const imageUrl = new URL(image, url);
+        const imageFilename = path.basename(imageUrl.pathname);
+        const savePath = path.join(mediaFolderPath, imageFilename);
+        await downloadMedia(imageUrl.href, savePath);
+        imageFilenames.push(imageFilename);
+      }
+
+      // Download and save videos
+      const videoFilenames = [];
+      for (const video of videos) {
+        const videoUrl = new URL(video, url);
+        const videoFilename = path.basename(videoUrl.pathname) + "mp4";
+        const savePath = path.join(mediaFolderPath, videoFilename);
+        await downloadMedia(videoUrl.href, savePath);
+        videoFilenames.push(videoFilename);
+      }
+
+      // Upload media files to Google Drive
+      //const mediaFolderId = "13BPe2SaDaKTZwJob-GwWJDt_-BjpsYd6";
+      //await uploadMediaFiles(mediaFolderId,imageFilenames,videoFilenames);
+
+      const mediaFilenames = [...imageFilenames, ...videoFilenames].join("\n");
+      tempRecord.AdCreative = (record.AdCreative || "") + (record.AdCreative ? "\n" : "") + mediaFilenames;
 
       try {
         const spanElements = await record.$$("span");
@@ -146,7 +231,9 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
         tempRecord.AdHeader = await record.$eval('div[role="button"] > div[style]', (el) => el.textContent.trim().replace("\r\n", ""));
       } catch (error) {}
 
-      tempRecord.AdCreative = "";
+      try {
+        tempRecord.Url = await record.$eval('a[data-lynx-mode="hover"]', (el) => el.getAttribute("href"));
+      } catch (error) {}
 
       try {
         const creativeAndBodyUseElements = await record.$$("span");
@@ -206,6 +293,8 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
             howManyAdsAppearedAgain++;
             allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("de-DE", options);
             allRecords[i].DisappearedSince = "";
+
+            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `\n[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
           }
           tempRecord.FirstSeenTimestamp = allRecords[i].FirstSeenTimestamp;
           allRecords[i] = tempRecord;
@@ -226,12 +315,12 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     for (let i = 0; i < allRecords.length; i++) {
       if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName) {
         allRecords[i].DisappearedSince = new Date().toLocaleString("de-DE", options);
+        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `\n[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
         adsDisappearCount++;
       }
     }
 
     // Finalize
-    await clearSheet("All Records!A2:M900000", sheetsService, spreadsheetId);
     let dataToPost = [];
     for (let i = 0, r = 2; i < allRecords.length; i++, r++) {
       dataToPost.push(
@@ -241,16 +330,19 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
           `${allRecords[i].AdHeader || ""};%_` +
           `${allRecords[i].AdCreative || ""};%_` +
           `${allRecords[i].CreativeAndBodyUse || ""};%_` +
+          `${allRecords[i].Url || ""};%_` +
           `${allRecords[i].VersionInfo || ""};%_` +
           `${allRecords[i].FirstSeenTimestamp || ""};%_` +
           `${allRecords[i].LastUpdateTimestamp || ""};%_` +
           `${allRecords[i].StartedRunning || ""};%_` +
           `${allRecords[i].TotalRuntimeOfAd || ""};%_` +
           `${allRecords[i].DisappearedSince || ""};%_` +
-          `${allRecords[i].HasAppearedAfterDisappearingDate || ""}`
+          `${allRecords[i].HasAppearedAfterDisappearingDate || ""};%_` +
+          `${allRecords[i].HistoryOfDisappearances || ""}`
       );
     }
     dataToPost[0] = dataToPost[0].replace("\r\n", "");
+    await clearSheet("All Records!A2:O900000", sheetsService, spreadsheetId);
     await appendIntoTopSpreadsheet(dataToPost, sheetsService, spreadsheetId, 2009049317);
     const dailyRecord = {
       Timestamp: new Date().toLocaleString("de-DE", options),
