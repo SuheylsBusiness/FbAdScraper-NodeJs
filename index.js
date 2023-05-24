@@ -208,8 +208,8 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
       //const mediaFolderId = "13BPe2SaDaKTZwJob-GwWJDt_-BjpsYd6";
       //await uploadMediaFiles(mediaFolderId,imageFilenames,videoFilenames);
 
-      const mediaFilenames = [...imageFilenames, ...videoFilenames].join("\n");
-      tempRecord.AdCreative = (record.AdCreative || "") + (record.AdCreative ? "\n" : "") + mediaFilenames;
+      const mediaFilenames = [...imageFilenames, ...videoFilenames].join(",");
+      tempRecord.AdCreative = (record.AdCreative || "") + (record.AdCreative ? "," : "") + mediaFilenames;
 
       try {
         const spanElements = await record.$$("span");
@@ -294,7 +294,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
             allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("de-DE", options);
             allRecords[i].DisappearedSince = "";
 
-            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `\n[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
+            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `,[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
           }
           tempRecord.FirstSeenTimestamp = allRecords[i].FirstSeenTimestamp;
           allRecords[i] = tempRecord;
@@ -315,7 +315,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     for (let i = 0; i < allRecords.length; i++) {
       if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName) {
         allRecords[i].DisappearedSince = new Date().toLocaleString("de-DE", options);
-        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `\n[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
+        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `,[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
         adsDisappearCount++;
       }
     }
