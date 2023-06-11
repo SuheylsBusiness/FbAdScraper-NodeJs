@@ -7,6 +7,105 @@ const axios = require("axios");
 const { google } = require("googleapis");
 const os = require("os");
 
+/* // Load client secrets from a local file.
+fs.readFile(CREDENTIALS_PATH, (err, content) => {
+  if (err) return console.log('Error loading client secret file:', err);
+  authorize(JSON.parse(content), uploadFiles);
+});
+ */
+function authorize(credentials) {
+  return new Promise((resolve, reject) => {
+    const {client_secret, client_id, redirect_uris} = credentials.installed;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+
+    // Check if we have previously stored a token.
+    fs.readFile(TOKEN_PATH, (err, token) => {
+      if (err) {
+        getAccessToken(oAuth2Client).then((oAuth2Client) => {
+          resolve(oAuth2Client);
+        }).catch((err) => {
+          reject(err);
+        });
+      } else {
+        oAuth2Client.setCredentials(JSON.parse(token));
+        resolve(oAuth2Client);
+      }
+    });
+  });
+}
+
+function getAccessToken(oAuth2Client) {
+  return new Promise((resolve, reject) => {
+    // Code to generate an access token...
+    oAuth2Client.getToken(code, (err, token) => {
+      if (err) {
+        reject(err);
+      } else {
+        oAuth2Client.setCredentials(token);
+        fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
+          if (err) reject(err);
+          else resolve(oAuth2Client);
+        });
+      }
+    });
+  });
+}
+
+
+/**
+ * Upload files to Google Drive.
+ * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
+ */
+function uploadFiles(auth) {
+  const drive = google.drive({version: 'v3', auth});
+  for (const videoFilename of videoFilenames) {
+    const filePath = path.join(mediaFolderPath, videoFilename);
+    var fileMetadata = {
+      'name': videoFilename,
+      'parents': [FOLDER_ID]
+    };
+    var media = {
+      mimeType: 'video/mp4',
+      body: fs.createReadStream(filePath)
+    };
+    drive.files.create({
+      resource: fileMetadata,
+      media: media,
+      fields: 'id'
+    }, (err, file) => {
+      if (err) {
+        console.error(err);
+      } else {
+        console.log('Uploaded file ID: ', file.id);
+      }
+    });
+  }
+}
+
+async function uploadFileToDrive(auth, filename, mimeType) {
+  const drive = google.drive({version: 'v3', auth});
+  const filePath = path.join(mediaFolderPath, filename);
+  var fileMetadata = {
+    'name': filename,
+    'parents': [FOLDER_ID]
+  };
+  var media = {
+    mimeType: mimeType,
+    body: fs.createReadStream(filePath)
+  };
+  try {
+    const response = await drive.files.create({
+      resource: fileMetadata,
+      media: media,
+      fields: 'id'
+    });
+    console.log('Uploaded file ID: ', response.data.id);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -82,7 +181,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     let allRecords = [];
 
     try {
-      const range = "All Records!A2:O90000";
+      const range = "All Records (Inline)!A2:O90000";
       const entries = await readSpreadsheetEntries(range, sheetsService, spreadsheetId);
       allRecords = entries.map((columns) => {
         const record = {};
@@ -186,23 +285,38 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
 
       // Download and save images
       const imageFilenames = [];
+      const imageFullFilenames = [];
       for (const image of images) {
         const imageUrl = new URL(image, url);
         const imageFilename = path.basename(imageUrl.pathname);
         const savePath = path.join(mediaFolderPath, imageFilename);
         await downloadMedia(imageUrl.href, savePath);
         imageFilenames.push(imageFilename);
+        imageFullFilenames.push(savePath);
       }
 
       // Download and save videos
       const videoFilenames = [];
+      const videoFullFilenames = [];
       for (const video of videos) {
         const videoUrl = new URL(video, url);
         const videoFilename = path.basename(videoUrl.pathname) + "mp4";
         const savePath = path.join(mediaFolderPath, videoFilename);
         await downloadMedia(videoUrl.href, savePath);
         videoFilenames.push(videoFilename);
+        videoFullFilenames.push(savePath);
       }
+
+      
+/*   // Upload images to Google Drive
+  for (const imageFilename of imageFullFilenames) {
+    await uploadFileToDrive(auth, imageFilename, 'image/*');
+  }
+
+  // Upload videos to Google Drive
+  for (const videoFilename of videoFullFilenames) {
+    await uploadFileToDrive(auth, videoFilename, 'video/mp4');
+  } */
 
       // Upload media files to Google Drive
       //const mediaFolderId = "13BPe2SaDaKTZwJob-GwWJDt_-BjpsYd6";
@@ -294,7 +408,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
             allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("de-DE", options);
             allRecords[i].DisappearedSince = "";
 
-            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `,[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
+            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
           }
           tempRecord.FirstSeenTimestamp = allRecords[i].FirstSeenTimestamp;
           allRecords[i] = tempRecord;
@@ -315,7 +429,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     for (let i = 0; i < allRecords.length; i++) {
       if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName) {
         allRecords[i].DisappearedSince = new Date().toLocaleString("de-DE", options);
-        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `,[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
+        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
         adsDisappearCount++;
       }
     }
@@ -342,7 +456,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
       );
     }
     dataToPost[0] = dataToPost[0].replace("\r\n", "");
-    await clearSheet("All Records!A2:O900000", sheetsService, spreadsheetId);
+    await clearSheet("All Records (Inline)!A2:O900000", sheetsService, spreadsheetId);
     await appendIntoTopSpreadsheet(dataToPost, sheetsService, spreadsheetId, 2009049317);
     const dailyRecord = {
       Timestamp: new Date().toLocaleString("de-DE", options),
@@ -383,12 +497,110 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
   });
 
   const page = await browser.newPage();
+/* 
+  try {
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
+    const auth = await authorize(credentials);
+    // Now you can use the auth object...
+  } catch (err) {
+    console.error('Error authorizing application:', err);
+  } */
 
   while (true) {
     var urlsToMonitor = await getUrlsToMonitor(gsheetService, sheetId);
     for (const url of urlsToMonitor) {
       await executeScrape(url, gsheetService, sheetId, page);
     }
+
+    let allRecords = [];
+
+    try {
+      const range = "All Records (Inline)!A2:O90000";
+      const entries = await readSpreadsheetEntries(range, gsheetService, sheetId);
+      allRecords = entries.map((columns) => {
+        const record = {};
+
+        try {
+          if (columns.length > 0) record.BrandName = formatStringProperly(columns[0]);
+          if (columns.length > 1) record.AdStatus = formatStringProperly(columns[1]);
+          if (columns.length > 2) record.CreativeId = formatStringProperly(columns[2]);
+          if (columns.length > 3) record.AdHeader = formatStringProperly(columns[3]);
+          if (columns.length > 4) record.AdCreative = formatStringProperly(columns[4]);
+          if (columns.length > 5) record.CreativeAndBodyUse = formatStringProperly(columns[5]);
+          if (columns.length > 6) record.Url = formatStringProperly(columns[6]);
+          if (columns.length > 7) record.VersionInfo = formatStringProperly(columns[7]);
+          if (columns.length > 8) record.FirstSeenTimestamp = formatStringProperly(columns[8]);
+          if (columns.length > 9) record.LastUpdateTimestamp = formatStringProperly(columns[9]);
+          if (columns.length > 10) record.StartedRunning = formatStringProperly(columns[10]);
+          if (columns.length > 11) record.TotalRuntimeOfAd = formatStringProperly(columns[11]);
+          if (columns.length > 12) record.DisappearedSince = formatStringProperly(columns[12]);
+          if (columns.length > 13) record.HasAppearedAfterDisappearingDate = formatStringProperly(columns[13]);
+          if (columns.length > 14) record.HistoryOfDisappearances = formatStringProperly(columns[14]);
+
+          record.HasBeenTouched = "False";
+        } catch (error) {
+          console.error("Error occurred while formatting record", error);
+        }
+
+        return record;
+      });
+    } catch (error) {
+      console.error("Error occurred while reading spreadsheet entries", error);
+    }
+    var perLineRecords = [];
+    for (const record of allRecords) {
+      if(record.HistoryOfDisappearances){
+      var allHistoryOfAppearance = record.HistoryOfDisappearances.split(";");
+      if (allHistoryOfAppearance.length > 0) {
+        for (const history of allHistoryOfAppearance) {
+          if (history === "undefined") {
+            continue;
+          }
+          const [dateValue, message] = history.match(/\[(.*?)\]:\s(.*$)/).slice(1);
+          perLineRecords.push({
+            BrandName: record.BrandName,
+            AdStatus: record.AdStatus,
+            CreativeId: record.CreativeId,
+            AdHeader: record.AdHeader,
+            AdCreative: record.AdCreative,
+            CreativeAndBodyUse: record.CreativeAndBodyUse,
+            Url: record.Url,
+            VersionInfo: record.VersionInfo,
+            Timestamp: dateValue,
+            StartedRunning: record.StartedRunning,
+            TotalRuntimeOfAd: record.TotalRuntimeOfAd,
+            Action: message,
+          });
+        }
+      } else {
+        perLineRecords.push(record);
+      }
+    }
+    else{
+      perLineRecords.push(record);
+    }
+    }
+    let dataToPost = [];
+    for (let i = 0, r = 2; i < perLineRecords.length; i++, r++) {
+      dataToPost.push(
+        `\r\n${perLineRecords[i].BrandName || ""};%_` +
+          `${perLineRecords[i].AdStatus || ""};%_` +
+          `${perLineRecords[i].CreativeId || ""};%_` +
+          `${perLineRecords[i].AdHeader || ""};%_` +
+          `${perLineRecords[i].AdCreative || ""};%_` +
+          `${perLineRecords[i].CreativeAndBodyUse || ""};%_` +
+          `${perLineRecords[i].Url || ""};%_` +
+          `${perLineRecords[i].VersionInfo || ""};%_` +
+          `${perLineRecords[i].Timestamp || ""};%_` +
+          `${perLineRecords[i].StartedRunning || ""};%_` +
+          `${perLineRecords[i].TotalRuntimeOfAd || ""};%_`+
+          `${perLineRecords[i].Action || ""};%_`
+      );
+    }
+    dataToPost[0] = dataToPost[0].replace("\r\n", "");
+    await clearSheet("All Records (Per-Line)!A2:L900000", gsheetService, sheetId);
+    await appendIntoTopSpreadsheet(dataToPost, gsheetService, sheetId, 1725758204);
+
     // Wait for 24 hours
     await sleep(86400000);
 
