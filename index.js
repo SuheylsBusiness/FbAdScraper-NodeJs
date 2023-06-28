@@ -4,8 +4,10 @@ const puppeteer = require("puppeteer");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
-const { google } = require("googleapis");
 const os = require("os");
+const { google } = require('googleapis');
+const authCredentials = require('./googleSheetApiAuth.json');
+const { promisify } = require('util');
 
 /* // Load client secrets from a local file.
 fs.readFile(CREDENTIALS_PATH, (err, content) => {
@@ -13,98 +15,6 @@ fs.readFile(CREDENTIALS_PATH, (err, content) => {
   authorize(JSON.parse(content), uploadFiles);
 });
  */
-function authorize(credentials) {
-  return new Promise((resolve, reject) => {
-    const {client_secret, client_id, redirect_uris} = credentials.installed;
-    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-
-    // Check if we have previously stored a token.
-    fs.readFile(TOKEN_PATH, (err, token) => {
-      if (err) {
-        getAccessToken(oAuth2Client).then((oAuth2Client) => {
-          resolve(oAuth2Client);
-        }).catch((err) => {
-          reject(err);
-        });
-      } else {
-        oAuth2Client.setCredentials(JSON.parse(token));
-        resolve(oAuth2Client);
-      }
-    });
-  });
-}
-
-function getAccessToken(oAuth2Client) {
-  return new Promise((resolve, reject) => {
-    // Code to generate an access token...
-    oAuth2Client.getToken(code, (err, token) => {
-      if (err) {
-        reject(err);
-      } else {
-        oAuth2Client.setCredentials(token);
-        fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
-          if (err) reject(err);
-          else resolve(oAuth2Client);
-        });
-      }
-    });
-  });
-}
-
-
-/**
- * Upload files to Google Drive.
- * @param {google.auth.OAuth2} auth An authorized OAuth2 client.
- */
-function uploadFiles(auth) {
-  const drive = google.drive({version: 'v3', auth});
-  for (const videoFilename of videoFilenames) {
-    const filePath = path.join(mediaFolderPath, videoFilename);
-    var fileMetadata = {
-      'name': videoFilename,
-      'parents': [FOLDER_ID]
-    };
-    var media = {
-      mimeType: 'video/mp4',
-      body: fs.createReadStream(filePath)
-    };
-    drive.files.create({
-      resource: fileMetadata,
-      media: media,
-      fields: 'id'
-    }, (err, file) => {
-      if (err) {
-        console.error(err);
-      } else {
-        console.log('Uploaded file ID: ', file.id);
-      }
-    });
-  }
-}
-
-async function uploadFileToDrive(auth, filename, mimeType) {
-  const drive = google.drive({version: 'v3', auth});
-  const filePath = path.join(mediaFolderPath, filename);
-  var fileMetadata = {
-    'name': filename,
-    'parents': [FOLDER_ID]
-  };
-  var media = {
-    mimeType: mimeType,
-    body: fs.createReadStream(filePath)
-  };
-  try {
-    const response = await drive.files.create({
-      resource: fileMetadata,
-      media: media,
-      fields: 'id'
-    });
-    console.log('Uploaded file ID: ', response.data.id);
-  } catch (err) {
-    console.error(err);
-  }
-}
-
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -137,23 +47,6 @@ async function downloadMedia(url, savePath) {
   }
 }
 
-// Upload media files to Google Drive
-async function uploadMediaFiles(mediaFolderId, imageFilenames, videoFilenames) {
-  const driveClient = await initializeService();
-
-  // Upload images
-  for (const imageFilename of imageFilenames) {
-    const imagePath = path.join(path.join(__dirname, "Media"), imageFilename);
-    await uploadFileToDrive(driveClient, imagePath, mediaFolderId);
-  }
-
-  // Upload videos
-  for (const videoFilename of videoFilenames) {
-    const videoPath = path.join(path.join(__dirname, "Media"), videoFilename);
-    await uploadFileToDrive(driveClient, videoPath, mediaFolderId);
-  }
-}
-
 async function executeScrape(url, sheetsService, spreadsheetId, page) {
   // Create a Media folder if it doesn't exist
   const mediaFolderPath = path.join(__dirname, "Media");
@@ -162,7 +55,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
   }
 
   const options = {
-    timeZone: "Europe/Berlin",
+    timeZone: "Europe/London",
     weekday: "short",
     year: "numeric",
     month: "2-digit",
@@ -272,8 +165,8 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
       const tempRecord = {
         BrandName: companyName,
         AdStatus: "Active",
-        FirstSeenTimestamp: new Date().toLocaleString("de-DE", options),
-        LastUpdateTimestamp: new Date().toLocaleString("de-DE", options),
+        FirstSeenTimestamp: new Date().toLocaleString("en-GB", options),
+        LastUpdateTimestamp: new Date().toLocaleString("en-GB", options),
         HasBeenTouched: "True",
       };
 
@@ -286,26 +179,26 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
       // Download and save images
       const imageFilenames = [];
       const imageFullFilenames = [];
-      for (const image of images) {
+   /*    for (const image of images) {
         const imageUrl = new URL(image, url);
         const imageFilename = path.basename(imageUrl.pathname);
         const savePath = path.join(mediaFolderPath, imageFilename);
         await downloadMedia(imageUrl.href, savePath);
         imageFilenames.push(imageFilename);
         imageFullFilenames.push(savePath);
-      }
+      } */
 
       // Download and save videos
       const videoFilenames = [];
       const videoFullFilenames = [];
-      for (const video of videos) {
+    /*   for (const video of videos) {
         const videoUrl = new URL(video, url);
         const videoFilename = path.basename(videoUrl.pathname) + "mp4";
         const savePath = path.join(mediaFolderPath, videoFilename);
         await downloadMedia(videoUrl.href, savePath);
         videoFilenames.push(videoFilename);
         videoFullFilenames.push(savePath);
-      }
+      } */
 
       
 /*   // Upload images to Google Drive
@@ -405,10 +298,10 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
         if (allRecords[i].CreativeId == tempRecord.CreativeId) {
           if (allRecords[i].DisappearedSince && allRecords[i].DisappearedSince.length > 0) {
             howManyAdsAppearedAgain++;
-            allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("de-DE", options);
+            allRecords[i].HasAppearedAfterDisappearingDate = new Date().toLocaleString("en-GB", options);
             allRecords[i].DisappearedSince = "";
 
-            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("de-DE", options)}]: Ad has appeared.`;
+            allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("en-GB", options)}]: Ad has appeared.`;
           }
           tempRecord.FirstSeenTimestamp = allRecords[i].FirstSeenTimestamp;
           allRecords[i] = tempRecord;
@@ -427,9 +320,37 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     }
 
     for (let i = 0; i < allRecords.length; i++) {
-      if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName) {
-        allRecords[i].DisappearedSince = new Date().toLocaleString("de-DE", options);
-        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("de-DE", options)}]: Ad has disappeared.`;
+      try {
+        await page.goto(allRecords[i].Url, { timeout: 0 });
+        try {
+          const followLinkButtonXPath = "//*[text()[contains(.,'Follow Link')]]";
+          const options = { timeout: 1500 }; // Set timeout to 1.5 seconds
+          await page.waitForXPath(followLinkButtonXPath, options);
+          const element = await page.$x(followLinkButtonXPath);
+          await element[0].click();
+          await page.waitForTimeout(1500); // Wait for 1.5 seconds
+          console.log("Clicked on the element successfully.");
+        } catch (err) {
+          console.error("Error occurred while clicking on the element", err);
+        }
+        const currentPageUrl = await page.url();
+        allRecords[i].Url = currentPageUrl;
+      } catch (err) {
+        // Handle error if needed
+        // console.error("Error occurred while visiting url", err);
+      }
+    }
+    
+    for (let i = 0; i < allRecords.length; i++) {
+      // Split HistoryOfDisappearances by ; to get an array
+      let historyArray = allRecords[i].HistoryOfDisappearances.split(';');
+      
+      // Check the last element of historyArray
+      let lastHistory = historyArray[historyArray.length - 1];
+    
+      if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName && !lastHistory.includes("Ad has disappeared")) {
+        allRecords[i].DisappearedSince = new Date().toLocaleString("en-GB", options);
+        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("en-GB", options)}]: Ad has disappeared.`;
         adsDisappearCount++;
       }
     }
@@ -459,7 +380,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     await clearSheet("All Records (Inline)!A2:O900000", sheetsService, spreadsheetId);
     await appendIntoTopSpreadsheet(dataToPost, sheetsService, spreadsheetId, 2009049317);
     const dailyRecord = {
-      Timestamp: new Date().toLocaleString("de-DE", options),
+      Timestamp: new Date().toLocaleString("en-GB", options),
       Brand: companyName,
       TotalActiveAds: totalAdCount.toString(),
       HowManyNewAds: newAdsCount.toString(),
@@ -507,6 +428,7 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
   } */
 
   while (true) {
+
     var urlsToMonitor = await getUrlsToMonitor(gsheetService, sheetId);
     for (const url of urlsToMonitor) {
       await executeScrape(url, gsheetService, sheetId, page);
