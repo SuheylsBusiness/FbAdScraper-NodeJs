@@ -342,15 +342,21 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
     }
     
     for (let i = 0; i < allRecords.length; i++) {
-      // Split HistoryOfDisappearances by ; to get an array
-      let historyArray = allRecords[i].HistoryOfDisappearances.split(';');
-      
-      // Check the last element of historyArray
-      let lastHistory = historyArray[historyArray.length - 1];
+      if (allRecords[i].HistoryOfDisappearances && allRecords[i].HistoryOfDisappearances !== "") {
+        // Split HistoryOfDisappearances by ; to get an array
+        let historyArray = allRecords[i].HistoryOfDisappearances.split(';');
+        
+        // Check the last element of historyArray
+        let lastHistory = historyArray[historyArray.length - 1];
     
-      if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName && !lastHistory.includes("Ad has disappeared")) {
-        allRecords[i].DisappearedSince = new Date().toLocaleString("en-GB", options);
-        allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("en-GB", options)}]: Ad has disappeared.`;
+        if (allRecords[i].HasBeenTouched == "False" && companyName == allRecords[i].BrandName && !lastHistory.includes("Ad has disappeared")) {
+          allRecords[i].DisappearedSince = new Date().toLocaleString("en-GB", options);
+          allRecords[i].HistoryOfDisappearances = allRecords[i].HistoryOfDisappearances + `;[${new Date().toLocaleString("en-GB", options)}]: Ad has disappeared.`;
+          adsDisappearCount++;
+        }
+      } else {
+        // If HistoryOfDisappearances is empty or undefined, initialize it with the disappearance message
+        allRecords[i].HistoryOfDisappearances = `[${new Date().toLocaleString("en-GB", options)}]: Ad has disappeared.`;
         adsDisappearCount++;
       }
     }
@@ -519,9 +525,12 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
           `${perLineRecords[i].Action || ""};%_`
       );
     }
-    dataToPost[0] = dataToPost[0].replace("\r\n", "");
-    await clearSheet("All Records (Per-Line)!A2:L900000", gsheetService, sheetId);
-    await appendIntoTopSpreadsheet(dataToPost, gsheetService, sheetId, 1725758204);
+    if (dataToPost.length > 0) {
+      dataToPost[0] = dataToPost[0].replace("\r\n", "");
+      await clearSheet("All Records (Per-Line)!A2:L900000", gsheetService, sheetId);
+      await appendIntoTopSpreadsheet(dataToPost, gsheetService, sheetId, 1725758204);
+    }
+
 
     // Wait for 24 hours
     await sleep(86400000);
