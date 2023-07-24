@@ -5,9 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
 const os = require("os");
-const { google } = require('googleapis');
-const authCredentials = require('./googleSheetApiAuth.json');
-const { promisify } = require('util');
 
 /* // Load client secrets from a local file.
 fs.readFile(CREDENTIALS_PATH, (err, content) => {
@@ -179,26 +176,26 @@ async function executeScrape(url, sheetsService, spreadsheetId, page) {
       // Download and save images
       const imageFilenames = [];
       const imageFullFilenames = [];
-   /*    for (const image of images) {
+     for (const image of images) {
         const imageUrl = new URL(image, url);
         const imageFilename = path.basename(imageUrl.pathname);
         const savePath = path.join(mediaFolderPath, imageFilename);
         await downloadMedia(imageUrl.href, savePath);
         imageFilenames.push(imageFilename);
         imageFullFilenames.push(savePath);
-      } */
+      } 
 
       // Download and save videos
       const videoFilenames = [];
       const videoFullFilenames = [];
-    /*   for (const video of videos) {
+      for (const video of videos) {
         const videoUrl = new URL(video, url);
         const videoFilename = path.basename(videoUrl.pathname) + "mp4";
         const savePath = path.join(mediaFolderPath, videoFilename);
         await downloadMedia(videoUrl.href, savePath);
         videoFilenames.push(videoFilename);
         videoFullFilenames.push(savePath);
-      } */
+      } 
 
       
 /*   // Upload images to Google Drive
